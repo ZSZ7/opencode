@@ -906,6 +906,102 @@ describe("Gemini route", () => {
     }),
   )
 
+  it.effect("ignores unknown response parts and primitive elements", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents({
+              candidates: [
+                {
+                  content: { parts: [null, 42, "future", { futurePart: { value: 1 } }, { text: "Hello" }] },
+                  finishReason: "STOP",
+                },
+              ],
+            }),
+          ),
+        ),
+      )
+
+      expect(response.text).toBe("Hello")
+      expect(response.finishReason).toEqual({ normalized: "stop", raw: "STOP" })
+    }),
+  )
+
+  it.effect("drops malformed known response parts", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents({
+              candidates: [
+                {
+                  content: {
+                    parts: [
+                      { text: 42 },
+                      { text: null },
+                      { functionCall: null },
+                      { functionCall: { name: null } },
+                      { text: "Hello" },
+                      { functionCall: { id: "call_1", name: "lookup", args: { query: "weather" } } },
+                    ],
+                  },
+                  finishReason: "STOP",
+                },
+              ],
+            }),
+          ),
+        ),
+      )
+
+      expect(response.text).toBe("Hello")
+      expect(response.toolCalls).toMatchObject([{ id: "call_1", name: "lookup", input: { query: "weather" } }])
+    }),
+  )
+
+  it.effect("decodes text and function call branches independently", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents({
+              candidates: [
+                {
+                  content: {
+                    parts: [
+                      { text: "A", functionCall: { name: null } },
+                      { text: 42, functionCall: { id: "call_1", name: "lookup" } },
+                      { text: "B", functionCall: { id: "call_2", name: "lookup" } },
+                    ],
+                  },
+                  finishReason: "STOP",
+                },
+              ],
+            }),
+          ),
+        ),
+      )
+
+      expect(response.text).toBe("AB")
+      expect(response.toolCalls).toMatchObject([
+        { id: "call_1", name: "lookup", input: {} },
+        { id: "call_2", name: "lookup", input: {} },
+      ])
+    }),
+  )
+
+  it.effect("rejects non-array response parts", () =>
+    Effect.gen(function* () {
+      const error = yield* LLMClient.generate(request).pipe(
+        Effect.provide(fixedResponse(sseEvents({ candidates: [{ content: { parts: {} } }] }))),
+        Effect.flip,
+      )
+
+      expect(error.reason).toMatchObject({ _tag: "InvalidProviderOutput" })
+      expect(error.message).toContain("Invalid google/gemini stream event")
+    }),
+  )
+
   it.effect("preserves thoughtSignature for reasoning and tool-call continuation", () =>
     Effect.gen(function* () {
       const body = sseEvents({

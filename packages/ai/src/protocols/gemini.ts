@@ -82,11 +82,6 @@ export type ProviderOptionsInput = OptionsInput
 // =============================================================================
 // Request Body Schema
 // =============================================================================
-// Gemini is known to send explicit `null` for optional streaming fields
-// (usage counts, flags, whole subtrees), so every response-side optional uses
-// `optionalNull` instead of bare `Schema.optional`. The same part/content
-// schemas lower the outbound request body; encoding drops `undefined` keys,
-// so the shared schemas stay safe there.
 const GeminiTextPart = Schema.Struct({
   text: Schema.String,
   thought: optionalNull(Schema.Boolean),
@@ -131,6 +126,11 @@ const GeminiContent = Schema.Struct({
   parts: optionalNull(Schema.Array(GeminiContentPart)),
 })
 type GeminiContent = Schema.Schema.Type<typeof GeminiContent>
+
+const GeminiResponseContent = Schema.Struct({
+  role: Schema.optional(Schema.Unknown),
+  parts: optionalNull(Schema.Array(Schema.Unknown)),
+})
 
 const GeminiSystemInstruction = Schema.Struct({
   parts: Schema.Array(Schema.Struct({ text: Schema.String })),
@@ -200,7 +200,7 @@ const GeminiUsage = Schema.Struct({
 type GeminiUsage = Schema.Schema.Type<typeof GeminiUsage>
 
 const GeminiCandidate = Schema.Struct({
-  content: optionalNull(GeminiContent),
+  content: optionalNull(GeminiResponseContent),
   finishReason: optionalNull(Schema.String),
 })
 
@@ -598,41 +598,49 @@ const step = (state: ParserState, event: GeminiEvent) => {
   // Supplier ids must be tracked across chunks of the same response, not just within one event's parts.
   const seenCallIds = new Set(nextState.seenCallIds)
 
-  for (const part of candidate.content.parts ?? []) {
-    const signature = "thoughtSignature" in part && part.thoughtSignature ? part.thoughtSignature : undefined
-    // Gemini attaches replay signatures to thought parts, visible text, or function calls;
-    // each block kind must retain the signature attached to its own parts.
-    if (signature !== undefined && "thought" in part && part.thought) reasoningSignature = signature
-    else if (signature !== undefined && "text" in part) textSignature = signature
-    if ("text" in part && part.text.length > 0) {
-      if (part.thought) {
-        lifecycle = Lifecycle.reasoningDelta(
-          lifecycle,
-          events,
-          "reasoning-0",
-          part.text,
-          signature ? googleMetadata({ thoughtSignature: signature }) : undefined,
-        )
-        continue
+  for (const raw of candidate.content.parts ?? []) {
+    if (!ProviderShared.isRecord(raw)) continue
+
+    if ("text" in raw) {
+      const decoded = Schema.decodeUnknownOption(GeminiTextPart)(raw)
+      if (decoded._tag === "Some") {
+        const part = decoded.value
+        const signature = part.thoughtSignature || undefined
+        // Gemini attaches replay signatures to thought parts and visible text;
+        // each block kind must retain the signature attached to its own parts.
+        if (signature !== undefined && part.thought) reasoningSignature = signature
+        else if (signature !== undefined) textSignature = signature
+        if (part.text.length > 0 && part.thought) {
+          lifecycle = Lifecycle.reasoningDelta(
+            lifecycle,
+            events,
+            "reasoning-0",
+            part.text,
+            signature ? googleMetadata({ thoughtSignature: signature }) : undefined,
+          )
+        } else if (part.text.length > 0) {
+          lifecycle = Lifecycle.reasoningEnd(
+            lifecycle,
+            events,
+            "reasoning-0",
+            reasoningSignature ? googleMetadata({ thoughtSignature: reasoningSignature }) : undefined,
+          )
+          lifecycle = Lifecycle.textDelta(
+            lifecycle,
+            events,
+            "text-0",
+            part.text,
+            textSignature ? googleMetadata({ thoughtSignature: textSignature }) : undefined,
+          )
+          textSignature = undefined
+        }
       }
-      lifecycle = Lifecycle.reasoningEnd(
-        lifecycle,
-        events,
-        "reasoning-0",
-        reasoningSignature ? googleMetadata({ thoughtSignature: reasoningSignature }) : undefined,
-      )
-      lifecycle = Lifecycle.textDelta(
-        lifecycle,
-        events,
-        "text-0",
-        part.text,
-        textSignature ? googleMetadata({ thoughtSignature: textSignature }) : undefined,
-      )
-      textSignature = undefined
-      continue
     }
 
-    if ("functionCall" in part) {
+    if ("functionCall" in raw) {
+      const decoded = Schema.decodeUnknownOption(GeminiFunctionCallPart)(raw)
+      if (decoded._tag === "None") continue
+      const part = decoded.value
       const input = part.functionCall.args === undefined ? {} : part.functionCall.args
       // Gemini 2.0+ supplies a unique function call ID on the part; when omitted (e.g. Gemini 1.5),
       // generate a globally unique ID rather than a per-request counter to prevent cross-request collisions in downstream registries.
