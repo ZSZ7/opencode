@@ -1,6 +1,6 @@
 import { batch, onCleanup, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
-import type { OpenCodeClient, OpenCodeEvent } from "../promise"
+import type { OpenCodeClient, OpenCodeEvent } from "../promise/index.js"
 
 export type ClientConnectionStatus = "connected" | "connecting" | "reconnecting"
 export type ClientConnectionEvent = {

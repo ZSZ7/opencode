@@ -126,4 +126,4 @@ export class Timeline extends Writable {
   }
 }
 
-export * as SimulationRecording from "./recording"
+export * as SimulationRecording from "./recording.js"

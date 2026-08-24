@@ -1,8 +1,8 @@
 import { Effect } from "effect"
-import { SimulationControlServer } from "../control-server"
-import { SimulationProtocol } from "../protocol"
-import { SimulationActions, type Harness } from "./actions"
-import { SimulationRenderer } from "./renderer"
+import { SimulationControlServer } from "../control-server.js"
+import { SimulationProtocol } from "../protocol/index.js"
+import { SimulationActions, type Harness } from "./actions.js"
+import { SimulationRenderer } from "./renderer.js"
 
 function handle(harness: Harness, request: SimulationProtocol.Frontend.Request, version: string) {
   switch (request.method) {
@@ -70,4 +70,4 @@ export const start = Effect.fn("SimulationServer.start")(function* (
   })
 })
 
-export * as SimulationServer from "./server"
+export * as SimulationServer from "./server.js"
