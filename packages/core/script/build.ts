@@ -16,7 +16,7 @@ const result = await Bun.build({
   entrypoints: files.filter((file) => !file.endsWith(".d.ts")),
   root,
   outdir: "dist",
-  target: "browser",
+  target: "bun",
   format: "esm",
   packages: "external",
   external: ["#sqlite", "#pty", "#fff", "#photon-wasm", "#shell-parser-wasm", "#process-lock-ffi", "#v1-migration"],

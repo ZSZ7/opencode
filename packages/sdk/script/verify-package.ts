@@ -97,6 +97,18 @@ Tool.Error satisfies Function
       }),
     ),
     Bun.write(
+      join(consumer, "wrangler.jsonc"),
+      JSON.stringify({
+        name: "opencode-sdk-packed-consumer",
+        main: "worker.js",
+        compatibility_date: "2026-07-15",
+        compatibility_flags: ["nodejs_compat"],
+        define: { __filename: '"/worker.js"', __dirname: '"/"' },
+        durable_objects: { bindings: [{ name: "OPENCODE", class_name: "OpenCodeDO" }] },
+        migrations: [{ tag: "v1", new_sqlite_classes: ["OpenCodeDO"] }],
+      }),
+    ),
+    Bun.write(
       join(consumer, "worker.js"),
       `import { OpenCodeWorkerd } from "@opencode-ai/sdk/workerd"
 import { Effect } from "effect"
@@ -115,7 +127,7 @@ export class OpenCodeDO {
           app: { version: "packed-workerd" },
           config: { content: "{}" },
         })
-        return Response.json(yield* sdk.server.health.get())
+        return Response.json(yield* sdk.health.get())
       }).pipe(Effect.scoped),
     )
   }
@@ -133,7 +145,7 @@ export default {
       `import { Miniflare } from "miniflare"
 
 const miniflare = new Miniflare({
-  compatibilityDate: "2026-08-23",
+  compatibilityDate: "2026-07-15",
   compatibilityFlags: ["nodejs_compat"],
   modules: true,
   scriptPath: new URL("./dist/worker.js", import.meta.url).pathname,
@@ -158,29 +170,20 @@ try {
 
   const sdk = archives.get("@opencode-ai/sdk")
   if (!sdk) throw new Error("Packed SDK archive was not created")
-  await $`npm install --ignore-scripts --no-audit --no-fund --package-lock=false ${sdk} miniflare@4.20260708.1 typescript@5.8.2`.cwd(consumer)
+  await $`npm install --ignore-scripts --no-audit --no-fund --package-lock=false ${sdk} typescript@5.8.2 wrangler@4.110.0`.cwd(consumer)
   await $`node node-import.mjs`.cwd(consumer)
   await $`node_modules/.bin/tsc --noEmit`.cwd(consumer)
 
-  const result = await Bun.build({
-    entrypoints: [join(consumer, "worker.js")],
-    conditions: ["workerd"],
-    target: "browser",
-    format: "esm",
-    outdir: join(consumer, "dist"),
-    sourcemap: "none",
-    throw: false,
-  })
-  if (!result.success) throw new AggregateError(result.logs, "Failed to bundle packed SDK for workerd")
+  await $`node_modules/.bin/wrangler deploy --dry-run --config wrangler.jsonc --outdir dist`.cwd(consumer)
 
   const transpiler = new Bun.Transpiler({ loader: "js" })
-  const leaked = (await Promise.all(result.outputs.map((artifact) => artifact.text())))
-    .flatMap((source) => [
-      ...transpiler.scanImports(source)
-        .filter((imported) => imported.kind !== "dynamic-import")
-        .map((imported) => imported.path),
-      ...Array.from(source.matchAll(/\brequire\(\s*["']([^"']+)["']\s*\)/g), (match) => match[1]),
-    ])
+  const bundled = await Bun.file(join(consumer, "dist/worker.js")).text()
+  const leaked = [
+    ...transpiler.scanImports(bundled)
+      .filter((imported) => imported.kind !== "dynamic-import")
+      .map((imported) => imported.path),
+    ...Array.from(bundled.matchAll(/\brequire\(\s*["']([^"']+)["']\s*\)/g), (match) => match[1]),
+  ]
     .filter((specifier) => specifier === "bun" || specifier.startsWith("bun:"))
   if (leaked.length > 0) throw new Error(`Packed workerd bundle statically imports Bun builtins: ${leaked.join(", ")}`)
 
