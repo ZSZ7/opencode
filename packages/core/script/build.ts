@@ -16,7 +16,7 @@ const result = await Bun.build({
   entrypoints: files.filter((file) => !file.endsWith(".d.ts")),
   root,
   outdir: "dist",
-  target: "bun",
+  target: "node",
   format: "esm",
   packages: "external",
   external: ["#sqlite", "#pty", "#fff", "#photon-wasm", "#shell-parser-wasm", "#process-lock-ffi", "#v1-migration"],
@@ -32,3 +32,31 @@ const result = await Bun.build({
   },
 })
 if (!result.success) throw new AggregateError(result.logs, "Failed to build Core")
+
+// Bun's Node target eagerly creates its shared require helper, so every split
+// entry evaluates import.meta.url even when it never requires a module. Keep
+// the helper lazy until Bun stops hoisting it into workerd-reachable chunks.
+const eagerRequire = "var __require = /* @__PURE__ */ createRequire(import.meta.url);"
+const lazyRequire = `var __require = (specifier) => createRequire(import.meta.url ?? "file:///worker.js")(specifier);
+__require.resolve = (specifier, options) => createRequire(import.meta.url ?? "file:///worker.js").resolve(specifier, options);`
+const rewritten = await Promise.all(
+  result.outputs.map(async (output) => {
+    if (!output.path.endsWith(".js")) return false
+    const source = await output.text()
+
+    const unsupported = source
+      .replace(/import\s*\{[^}]*\b__require\b[^}]*\}\s*from\s*["'][^"']+["'];/g, "")
+      .replace(/export\s*\{[^}]*\b__require\b[^}]*\};/g, "")
+      .replace(eagerRequire, "")
+      .replace(/\b__require\.resolve\s*\(/g, "")
+      .replace(/\b__require\s*\(/g, "")
+    if (/\b__require\b/.test(unsupported)) throw new Error(`Unsupported generated require usage in ${output.path}`)
+
+    if (!source.includes(eagerRequire)) return false
+    if (source.indexOf(eagerRequire) !== source.lastIndexOf(eagerRequire))
+      throw new Error(`Multiple eager require helpers in ${output.path}`)
+    await Bun.write(output.path, source.replace(eagerRequire, lazyRequire))
+    return true
+  }),
+)
+if (rewritten.filter(Boolean).length !== 1) throw new Error("Expected exactly one eager require helper in Core output")

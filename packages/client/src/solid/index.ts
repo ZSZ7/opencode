@@ -1,3 +1,3 @@
-export * from "./data.js"
-export * from "./connection.js"
-export * from "./pty.js"
+export * from "./data"
+export * from "./connection"
+export * from "./pty"

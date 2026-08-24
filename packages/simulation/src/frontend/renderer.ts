@@ -1,7 +1,7 @@
 import type { CliRenderer, CliRendererConfig } from "@opentui/core"
 import { createTestRenderer, type TestRendererSetup } from "@opentui/core/testing"
 import { Effect } from "effect"
-import { Timeline } from "../recording.js"
+import { Timeline } from "../recording"
 
 const setups = new WeakMap<CliRenderer, TestRendererSetup>()
 const recordings = new WeakMap<CliRenderer, Timeline>()
@@ -74,4 +74,4 @@ export function finish(renderer: CliRenderer) {
   return Effect.tryPromise(() => recording.finish())
 }
 
-export * as SimulationRenderer from "./renderer.js"
+export * as SimulationRenderer from "./renderer"

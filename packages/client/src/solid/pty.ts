@@ -1,4 +1,4 @@
-import type { OpenCodeClient, PtyConnectTokenInput } from "../promise/index.js"
+import type { OpenCodeClient, PtyConnectTokenInput } from "../promise"
 
 export type PtyClientOptions = {
   readonly url: string

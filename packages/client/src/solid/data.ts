@@ -35,7 +35,7 @@ import type {
   OpenCodeEvent,
   OpenCodeClient,
   WebSearchProvider,
-} from "../promise/index.js"
+} from "../promise"
 import { Worktree } from "@opencode-ai/schema/worktree"
 import { SessionID } from "@opencode-ai/schema/session-id"
 import { SessionMessage } from "@opencode-ai/schema/session-message"
@@ -44,7 +44,7 @@ import {
   isFormNotFoundError,
   isPermissionNotFoundError,
   type SessionPromptInput,
-} from "../promise/index.js"
+} from "../promise"
 import { createStore, produce, reconcile } from "solid-js/store"
 import type { SessionInbox } from "@opencode-ai/schema/session-inbox"
 import { batch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"

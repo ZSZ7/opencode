@@ -8,9 +8,9 @@ import {
   type MockMouse,
 } from "@opentui/core/testing"
 import { Effect, Schema } from "effect"
-import { SimulationProtocol } from "../protocol/index.js"
-import { SimulationRenderer } from "./renderer.js"
-import { SimulationSemantics } from "./semantics.js"
+import { SimulationProtocol } from "../protocol"
+import { SimulationRenderer } from "./renderer"
+import { SimulationSemantics } from "./semantics"
 
 export type Action = SimulationProtocol.Frontend.Action
 export type Element = SimulationProtocol.Frontend.Element
@@ -226,4 +226,4 @@ export const execute = Effect.fn("SimulationActions.execute")(function* (harness
   return state(harness)
 })
 
-export * as SimulationActions from "./actions.js"
+export * as SimulationActions from "./actions"

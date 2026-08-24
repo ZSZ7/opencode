@@ -103,7 +103,6 @@ Tool.Error satisfies Function
         main: "worker.js",
         compatibility_date: "2026-07-15",
         compatibility_flags: ["nodejs_compat"],
-        define: { __filename: '"/worker.js"', __dirname: '"/"' },
         durable_objects: { bindings: [{ name: "OPENCODE", class_name: "OpenCodeDO" }] },
         migrations: [{ tag: "v1", new_sqlite_classes: ["OpenCodeDO"] }],
       }),
@@ -178,6 +177,9 @@ try {
 
   const transpiler = new Bun.Transpiler({ loader: "js" })
   const bundled = await Bun.file(join(consumer, "dist/worker.js")).text()
+  if (/createRequire\s*\(\s*import\.meta\.url\s*\)/.test(bundled)) {
+    throw new Error("Packed workerd bundle contains Bun's eager Node require initializer")
+  }
   const leaked = [
     ...transpiler.scanImports(bundled)
       .filter((imported) => imported.kind !== "dynamic-import")

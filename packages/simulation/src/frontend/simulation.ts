@@ -1,9 +1,9 @@
 import { createCliRenderer, type CliRendererConfig } from "@opentui/core"
 import { Config, Effect } from "effect"
-import { DriveManifest } from "../manifest.js"
-import { SimulationActions } from "./actions.js"
-import { SimulationRenderer } from "./renderer.js"
-import { SimulationServer } from "./server.js"
+import { DriveManifest } from "../manifest"
+import { SimulationActions } from "./actions"
+import { SimulationRenderer } from "./renderer"
+import { SimulationServer } from "./server"
 
 /** Drive-mode renderer and control-server acquisition. */
 export const create = Effect.fn("Drive.create")(function* (options: CliRendererConfig, version: string) {
@@ -28,4 +28,4 @@ export const create = Effect.fn("Drive.create")(function* (options: CliRendererC
   return renderer
 })
 
-export * as Drive from "./simulation.js"
+export * as Drive from "./simulation"

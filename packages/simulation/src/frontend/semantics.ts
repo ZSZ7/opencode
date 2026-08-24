@@ -1,5 +1,5 @@
 import type { Renderable } from "@opentui/core"
-import type { SimulationProtocol } from "../protocol/index.js"
+import type { SimulationProtocol } from "../protocol"
 
 // Semantic renderables set an explicit stable OpenTUI id so ui.state and
 // ui.snapshot expose the same identity. Hierarchy and element handles come
