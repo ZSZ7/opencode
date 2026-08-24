@@ -638,6 +638,135 @@ describe("Anthropic Messages route", () => {
     }),
   )
 
+  it.effect("ignores unknown blocks and deltas with malformed payload fields", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents(
+              { type: "message_start", message: { usage: { input_tokens: 1 } } },
+              {
+                type: "content_block_start",
+                index: 0,
+                content_block: { type: "future_block", text: 42, thinking: null, id: { value: 1 } },
+              },
+              {
+                type: "content_block_delta",
+                index: 0,
+                delta: { type: "future_delta", text: 42, partial_json: null },
+              },
+              { type: "content_block_stop", index: 0 },
+              { type: "content_block_start", index: 1, content_block: { type: "text", text: "" } },
+              { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "Hello" } },
+              { type: "content_block_stop", index: 1 },
+              { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } },
+              { type: "message_stop" },
+            ),
+          ),
+        ),
+      )
+
+      expect(response.text).toBe("Hello")
+      expect(response.reasoning ?? "").toBe("")
+      expect(response.toolCalls).toEqual([])
+      expect(response.finishReason).toEqual({ normalized: "stop", raw: "end_turn" })
+    }),
+  )
+
+  it.effect("ignores malformed fields from other content variants", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents(
+              { type: "message_start", message: { usage: { input_tokens: 1 } } },
+              {
+                type: "content_block_start",
+                index: 0,
+                content_block: { type: "text", text: "Hello", thinking: 42 },
+              },
+              {
+                type: "content_block_delta",
+                index: 0,
+                delta: { type: "text_delta", text: "!", partial_json: 42 },
+              },
+              { type: "content_block_stop", index: 0 },
+              { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } },
+              { type: "message_stop" },
+            ),
+          ),
+        ),
+      )
+
+      expect(response.text).toBe("Hello!")
+      expect(response.finishReason).toEqual({ normalized: "stop", raw: "end_turn" })
+    }),
+  )
+
+  it.effect("drops malformed known content blocks", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents(
+              { type: "message_start", message: { usage: { input_tokens: 1 } } },
+              { type: "content_block_start", index: 0, content_block: { type: "text", text: null } },
+              { type: "content_block_stop", index: 0 },
+              {
+                type: "content_block_start",
+                index: 1,
+                content_block: { type: "thinking", thinking: 42, signature: null },
+              },
+              { type: "content_block_stop", index: 1 },
+              {
+                type: "content_block_start",
+                index: 2,
+                content_block: { type: "tool_use", id: null, name: 42, input: {} },
+              },
+              { type: "content_block_stop", index: 2 },
+              { type: "content_block_start", index: 3, content_block: { type: "text", text: "" } },
+              { type: "content_block_delta", index: 3, delta: { type: "text_delta", text: "Hello" } },
+              { type: "content_block_stop", index: 3 },
+              { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } },
+              { type: "message_stop" },
+            ),
+          ),
+        ),
+      )
+
+      expect(response.text).toBe("Hello")
+      expect(response.reasoning ?? "").toBe("")
+      expect(response.toolCalls).toEqual([])
+    }),
+  )
+
+  it.effect("drops malformed known content block deltas", () =>
+    Effect.gen(function* () {
+      const response = yield* LLMClient.generate(request).pipe(
+        Effect.provide(
+          fixedResponse(
+            sseEvents(
+              { type: "message_start", message: { usage: { input_tokens: 1 } } },
+              { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+              { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: null } },
+              { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: 42 } },
+              { type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: null } },
+              { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: 42 } },
+              { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Hello" } },
+              { type: "content_block_stop", index: 0 },
+              { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } },
+              { type: "message_stop" },
+            ),
+          ),
+        ),
+      )
+
+      expect(response.text).toBe("Hello")
+      expect(response.reasoning ?? "").toBe("")
+      expect(response.toolCalls).toEqual([])
+    }),
+  )
+
   it.effect("requires message_stop before completing a streamed message", () =>
     Effect.gen(function* () {
       const error = yield* LLMClient.generate(request).pipe(
