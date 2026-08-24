@@ -36,6 +36,7 @@ if (!result.success) throw new AggregateError(result.logs, "Failed to build Core
 // Bun's Node target eagerly creates its shared require helper, so every split
 // entry evaluates import.meta.url even when it never requires a module. Keep
 // the helper lazy until Bun stops hoisting it into workerd-reachable chunks.
+// https://github.com/oven-sh/bun/issues/12615
 const eagerRequire = "var __require = /* @__PURE__ */ createRequire(import.meta.url);"
 const lazyRequire = `var __require = (specifier) => createRequire(import.meta.url ?? "file:///worker.js")(specifier);
 __require.resolve = (specifier, options) => createRequire(import.meta.url ?? "file:///worker.js").resolve(specifier, options);`
@@ -55,8 +56,11 @@ const rewritten = await Promise.all(
     if (!source.includes(eagerRequire)) return false
     if (source.indexOf(eagerRequire) !== source.lastIndexOf(eagerRequire))
       throw new Error(`Multiple eager require helpers in ${output.path}`)
-    await Bun.write(output.path, source.replace(eagerRequire, lazyRequire))
+    const rewrittenSource = source.replace(eagerRequire, lazyRequire)
+    if (rewrittenSource.includes(eagerRequire)) throw new Error(`Failed to rewrite eager require helper in ${output.path}`)
+    await Bun.write(output.path, rewrittenSource)
     return true
   }),
 )
-if (rewritten.filter(Boolean).length !== 1) throw new Error("Expected exactly one eager require helper in Core output")
+if (rewritten.filter(Boolean).length !== 1)
+  throw new Error("Expected exactly one eager require helper; Bun may have fixed #12615 and made this shim removable")
